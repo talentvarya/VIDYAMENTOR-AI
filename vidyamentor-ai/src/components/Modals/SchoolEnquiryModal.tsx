@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Building2, Send, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { submitLead } from '../../lib/api';
 
 interface SchoolEnquiryModalProps {
   isOpen: boolean;
@@ -20,20 +21,30 @@ export const SchoolEnquiryModal: React.FC<SchoolEnquiryModalProps> = ({ isOpen, 
   });
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [referenceId, setReferenceId] = useState('');
+  const [error, setError] = useState('');
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    setError('');
+    try {
+      const result = await submitLead('school-enquiry', formData);
+      setReferenceId(result.referenceId);
       setSubmitted(true);
-    }, 700);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to submit the enquiry.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleClose = () => {
     setSubmitted(false);
+    setReferenceId('');
+    setError('');
     setFormData({
       institutionName: '',
       contactPerson: '',
@@ -219,6 +230,8 @@ export const SchoolEnquiryModal: React.FC<SchoolEnquiryModalProps> = ({ isOpen, 
                 />
               </div>
 
+              {error && <div role="alert" className="p-3 rounded-lg bg-red-50 text-red-600 text-xs font-medium border border-red-100">{error}</div>}
+
               <button
                 id="school-enquiry-submit-btn"
                 type="submit"
@@ -247,6 +260,10 @@ export const SchoolEnquiryModal: React.FC<SchoolEnquiryModalProps> = ({ isOpen, 
               </div>
 
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-left space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Reference:</span>
+                  <span className="font-mono font-bold text-blue-700">{referenceId}</span>
+                </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Institution:</span>
                   <span className="font-bold text-slate-800">{formData.institutionName}</span>

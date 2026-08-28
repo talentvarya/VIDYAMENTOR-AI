@@ -1,229 +1,118 @@
 import React, { useState } from 'react';
-import { X, ShieldAlert, Building2, Key, ArrowRight, CheckCircle2, Lock, Sparkles } from 'lucide-react';
+import { ArrowRight, Building2, KeyRound, Laptop, Lock, ShieldAlert, X } from 'lucide-react';
+import { finishAuthentication, requestAdminOtp, verifyAdminOtp } from '../../lib/api';
+import type { AppRole, AuthSession } from '../../types';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onAuthenticated: (session: AuthSession) => void;
 }
 
-export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ isOpen, onClose }) => {
+export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ isOpen, onClose, onAuthenticated }) => {
   const [adminType, setAdminType] = useState<'school' | 'platform'>('school');
-  const [adminId, setAdminId] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
   const [schoolCode, setSchoolCode] = useState('');
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [step, setStep] = useState<'email' | 'otp' | 'device'>('email');
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
 
   if (!isOpen) return null;
+  const role: Extract<AppRole, 'school_admin' | 'super_admin'> = adminType === 'school' ? 'school_admin' : 'super_admin';
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!adminId || !password) {
-      setError('Please provide administrative credentials.');
-      return;
-    }
-    if (adminType === 'school' && !schoolCode) {
-      setError('Please enter your School Affiliation Code.');
-      return;
-    }
-
-    setError('');
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      setSuccess(true);
-    }, 700);
-  };
-
-  const handleClose = () => {
-    setSuccess(false);
-    setAdminId('');
-    setPassword('');
-    setSchoolCode('');
+  const close = () => {
+    setStep('email');
+    setOtp(['', '', '', '', '', '']);
     setError('');
     onClose();
   };
 
+  const sendOtp = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!email.includes('@') || (adminType === 'school' && !schoolCode.trim())) {
+      setError('Enter the registered admin email and school code.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      await requestAdminOtp(email);
+      setStep('otp');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to send admin OTP.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verify = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const result = await verifyAdminOtp(email, otp.join(''), role, adminType === 'school' ? schoolCode : undefined);
+      if (result.conflict) setStep('device');
+      else onAuthenticated(result.session);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to verify admin access.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const replaceDevice = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const result = await finishAuthentication(true);
+      if (!result.session || result.session.role !== role) throw new Error('Administrative role verification failed.');
+      onAuthenticated(result.session);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to continue on this device.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div 
-        id="admin-login-modal-container"
-        className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
-      >
-        {/* Header */}
-        <div className="bg-slate-900 px-6 py-5 text-white flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center">
-              <Lock className="w-5 h-5 text-blue-400" />
-            </div>
-            <div>
-              <h3 className="font-bold text-lg leading-tight">Admin & School Gateway</h3>
-              <p className="text-slate-400 text-xs font-medium">Permission-Based Management Portal</p>
-            </div>
-          </div>
-          <button
-            id="close-admin-login-modal-btn"
-            onClick={handleClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-            aria-label="Close modal"
-          >
-            <X className="w-5 h-5" />
-          </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs" role="dialog" aria-modal="true">
+      <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div className="flex items-center justify-between bg-slate-900 px-6 py-5 text-white">
+          <div className="flex items-center gap-2.5"><div className="flex h-9 w-9 items-center justify-center rounded-xl border border-blue-400/30 bg-blue-500/20"><Lock className="h-5 w-5 text-blue-400" /></div><div><h3 className="text-lg font-bold">Admin & School Gateway</h3><p className="text-xs text-slate-400">Database-backed permissions</p></div></div>
+          <button onClick={close} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white" aria-label="Close"><X className="h-5 w-5" /></button>
         </div>
-
-        {/* Content */}
         <div className="p-6">
-          {!success ? (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Switcher */}
-              <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl">
-                <button
-                  type="button"
-                  onClick={() => setAdminType('school')}
-                  className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                    adminType === 'school'
-                      ? 'bg-white text-blue-700 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Building2 className="w-3.5 h-3.5" /> School Admin
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAdminType('platform')}
-                  className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                    adminType === 'platform'
-                      ? 'bg-white text-blue-700 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <ShieldAlert className="w-3.5 h-3.5" /> Platform Admin
-                </button>
+          {step === 'email' && (
+            <form onSubmit={sendOtp} className="space-y-4">
+              <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1">
+                <button type="button" onClick={() => setAdminType('school')} className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold ${adminType === 'school' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'}`}><Building2 className="h-3.5 w-3.5" /> School Admin</button>
+                <button type="button" onClick={() => setAdminType('platform')} className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold ${adminType === 'platform' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'}`}><ShieldAlert className="h-3.5 w-3.5" /> Super Admin</button>
               </div>
-
-              <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 text-xs text-blue-800">
-                {adminType === 'school' ? (
-                  <p>
-                    <strong>School Dashboard:</strong> Manage enrolled batches (Classes 9–12), assign teacher mentors, and view academic test analytics.
-                  </p>
-                ) : (
-                  <p>
-                    <strong>Platform Governance:</strong> Manage free education grants, curriculum safety rules, and platform audits.
-                  </p>
-                )}
-              </div>
-
-              {adminType === 'school' && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                    School Institution Code
-                  </label>
-                  <input
-                    id="school-code-input"
-                    type="text"
-                    required
-                    value={schoolCode}
-                    onChange={(e) => setSchoolCode(e.target.value)}
-                    placeholder="e.g., SCH-CBSE-4091"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Admin Email / ID
-                </label>
-                <input
-                  id="admin-email-input"
-                  type="text"
-                  required
-                  value={adminId}
-                  onChange={(e) => setAdminId(e.target.value)}
-                  placeholder="admin@institution.edu"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Security Passkey
-                </label>
-                <div className="relative">
-                  <Key className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    id="admin-password-input"
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••••••"
-                    className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              {error && (
-                <div className="p-3 rounded-lg bg-red-50 text-red-600 text-xs font-medium border border-red-100">
-                  {error}
-                </div>
-              )}
-
-              <button
-                id="admin-login-submit-btn"
-                type="submit"
-                disabled={loading}
-                className="w-full py-3.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-70 text-sm"
-              >
-                {loading ? (
-                  <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                ) : (
-                  <>
-                    Secure Admin Login <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-
-              <div className="text-center pt-2">
-                <p className="text-xs text-slate-500">
-                  Protected with 256-bit encryption & Multi-Factor Auth (MFA).
-                </p>
-              </div>
+              <p className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-800">Role and school scope are verified from protected database records. Email metadata is never trusted for authorization.</p>
+              {adminType === 'school' && <label className="block"><span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">School Code</span><input value={schoolCode} onChange={(e) => setSchoolCode(e.target.value.toUpperCase())} className="input font-mono" placeholder="SCH-CBSE-4091" required /></label>}
+              <label className="block"><span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">Registered Admin Email</span><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="input" placeholder="admin@institution.edu" required /></label>
+              {error && <ErrorMessage message={error} />}
+              <button disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3.5 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-60">{loading ? <Spinner /> : <>Send Secure OTP <ArrowRight className="h-4 w-4" /></>}</button>
             </form>
-          ) : (
-            <div className="text-center py-5 space-y-4">
-              <div className="w-14 h-14 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto border border-blue-200">
-                <CheckCircle2 className="w-7 h-7" />
-              </div>
-              <div>
-                <h4 className="text-xl font-bold text-slate-900">Admin Session Verified</h4>
-                <p className="text-xs text-slate-600 mt-1">
-                  Connected to {adminType === 'school' ? 'School Dashboard' : 'Platform Oversight Controller'}.
-                </p>
-              </div>
-
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-left text-xs space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Role:</span>
-                  <span className="font-bold text-slate-800">{adminType === 'school' ? 'School Principal / Coordinator' : 'VIDYAMENTOR Platform Admin'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Curriculum Scope:</span>
-                  <span className="font-bold text-blue-700">Classes 9, 10, 11, 12</span>
-                </div>
-              </div>
-
-              <button
-                onClick={handleClose}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md text-sm flex items-center justify-center gap-2"
-              >
-                <Sparkles className="w-4 h-4" /> Open Admin Console Preview
-              </button>
-            </div>
+          )}
+          {step === 'otp' && (
+            <form onSubmit={verify} className="space-y-5 text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-600"><KeyRound className="h-6 w-6" /></div>
+              <div><h4 className="text-xl font-bold text-slate-900">Verify administrator</h4><p className="mt-1 text-sm text-slate-500">Enter the code sent to {email}.</p></div>
+              <div className="flex justify-center gap-2">{otp.map((value, index) => <input key={index} id={`admin-otp-${index}`} inputMode="numeric" maxLength={1} value={value} onChange={(e) => { const next = [...otp]; next[index] = e.target.value.replace(/\D/g, '').slice(-1); setOtp(next); if (next[index]) document.getElementById(`admin-otp-${index + 1}`)?.focus(); }} className="h-12 w-11 rounded-xl border border-slate-200 text-center text-lg font-bold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100" />)}</div>
+              {error && <ErrorMessage message={error} />}
+              <button disabled={loading || otp.join('').length !== 6} className="w-full rounded-xl bg-slate-900 px-4 py-3.5 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-60">{loading ? <Spinner /> : 'Open Admin Workspace'}</button>
+            </form>
+          )}
+          {step === 'device' && (
+            <div className="space-y-4 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Laptop className="h-7 w-7" /></div><div><h4 className="text-xl font-bold text-slate-900">Another session is active</h4><p className="mt-2 text-sm text-slate-500">End that session before opening this privileged workspace.</p></div>{error && <ErrorMessage message={error} />}<button onClick={replaceDevice} disabled={loading} className="w-full rounded-xl bg-slate-900 px-4 py-3.5 text-sm font-bold text-white disabled:opacity-60">{loading ? <Spinner /> : 'Logout Other Device & Continue'}</button></div>
           )}
         </div>
       </div>
     </div>
   );
 };
+
+const ErrorMessage = ({ message }: { message: string }) => <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-left text-xs font-medium text-red-600">{message}</div>;
+const Spinner = () => <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />;

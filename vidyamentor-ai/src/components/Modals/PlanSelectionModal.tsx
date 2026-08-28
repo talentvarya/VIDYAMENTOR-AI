@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Check, ShieldCheck, ArrowRight, Sparkles, CheckCircle2, Lock } from 'lucide-react';
 import { PricingPlan } from '../../types';
 
@@ -18,8 +18,15 @@ export const PlanSelectionModal: React.FC<PlanSelectionModalProps> = ({
   onProceedToLogin,
 }) => {
   const [selectedCycle, setSelectedCycle] = useState<'monthly' | 'annual'>(billingCycle);
-  const [selectedLangs, setSelectedLangs] = useState<[string, string]>(['English', 'Hinglish']);
+  const [selectedLangs, setSelectedLangs] = useState<string[]>(['English', 'Hinglish']);
   const [confirmed, setConfirmed] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setSelectedCycle(billingCycle);
+    setSelectedLangs(['English', 'Hinglish']);
+    setConfirmed(false);
+  }, [billingCycle, isOpen, plan?.id]);
 
   if (!isOpen || !plan) return null;
 
@@ -31,17 +38,8 @@ export const PlanSelectionModal: React.FC<PlanSelectionModalProps> = ({
   const availableLangs = ['English', 'Hinglish', 'Hindi', 'Tamil', 'Telugu', 'Marathi', 'Bengali', 'Gujarati'];
 
   const toggleLang = (lang: string) => {
-    if (selectedLangs.includes(lang)) {
-      if (selectedLangs.length > 1) {
-        setSelectedLangs([selectedLangs[0] === lang ? selectedLangs[1] : selectedLangs[0], ''] as any);
-      }
-    } else {
-      if (selectedLangs[0] && selectedLangs[1]) {
-        setSelectedLangs([selectedLangs[1], lang]);
-      } else {
-        setSelectedLangs([selectedLangs[0] || 'English', lang]);
-      }
-    }
+    if (selectedLangs.includes(lang)) return;
+    setSelectedLangs([selectedLangs[1], lang]);
   };
 
   const handleProceed = () => {

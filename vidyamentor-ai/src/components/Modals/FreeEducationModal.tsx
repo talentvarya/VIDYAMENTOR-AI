@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, HeartHandshake, FileCheck, ArrowRight, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { submitLead } from '../../lib/api';
 
 interface FreeEducationModalProps {
   isOpen: boolean;
@@ -20,21 +21,29 @@ export const FreeEducationModal: React.FC<FreeEducationModalProps> = ({ isOpen, 
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [applicationId, setApplicationId] = useState('');
+  const [error, setError] = useState('');
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      setApplicationId(`VM-AID-${Math.floor(100000 + Math.random() * 900000)}`);
+    setError('');
+    try {
+      const result = await submitLead('free-education', formData);
+      setApplicationId(result.referenceId);
       setSubmitted(true);
-    }, 700);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to submit the application.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleClose = () => {
     setSubmitted(false);
+    setApplicationId('');
+    setError('');
     setFormData({
       studentName: '',
       email: '',
@@ -205,6 +214,8 @@ export const FreeEducationModal: React.FC<FreeEducationModalProps> = ({ isOpen, 
                   I confirm that all details provided are truthful and for my school education only.
                 </label>
               </div>
+
+              {error && <div role="alert" className="p-3 rounded-lg bg-red-50 text-red-600 text-xs font-medium border border-red-100">{error}</div>}
 
               <button
                 id="aid-submit-btn"

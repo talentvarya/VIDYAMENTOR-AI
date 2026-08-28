@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Check, 
   Sparkles, 
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { PRICING_PLANS } from '../data/content';
 import { PricingPlan } from '../types';
+import { supabase } from '../lib/supabase';
 
 interface PricingSectionProps {
   onSelectPlan: (plan: PricingPlan, cycle: 'monthly' | 'annual') => void;
@@ -22,8 +23,33 @@ export const PricingSection: React.FC<PricingSectionProps> = ({
 }) => {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('annual');
   const [filterCategory, setFilterCategory] = useState<'all' | 'secondary' | 'senior' | 'combos'>('all');
+  const [plans, setPlans] = useState<PricingPlan[]>(PRICING_PLANS);
 
-  const filteredPlans = PRICING_PLANS.filter((plan) => {
+  useEffect(() => {
+    if (!supabase) return;
+    void supabase
+      .from('pricing_plans')
+      .select('code,amount_minor,billing_period,features')
+      .eq('is_active', true)
+      .then(({ data }) => {
+        if (!data?.length) return;
+        const currency = (amount: number) => `₹${(amount / 100).toLocaleString('en-IN')}`;
+        setPlans(PRICING_PLANS.map((plan) => {
+          const monthly = data.find((row) => row.code === `${plan.id}-monthly`);
+          const annual = data.find((row) => row.code === `${plan.id}-annual`);
+          return {
+            ...plan,
+            monthlyPrice: monthly ? currency(monthly.amount_minor) : plan.monthlyPrice,
+            annualPrice: annual ? currency(annual.amount_minor) : plan.annualPrice,
+            features: Array.isArray(annual?.features) && annual.features.length
+              ? annual.features.map(String)
+              : plan.features,
+          };
+        }));
+      });
+  }, []);
+
+  const filteredPlans = plans.filter((plan) => {
     if (filterCategory === 'all') return true;
     if (filterCategory === 'secondary') return plan.id === 'class-9' || plan.id === 'class-10' || plan.id === 'class-9-10-combo';
     if (filterCategory === 'senior') return plan.id === 'class-11' || plan.id === 'class-12' || plan.id === 'class-11-12-combo';
