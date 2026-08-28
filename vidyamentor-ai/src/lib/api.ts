@@ -157,7 +157,7 @@ export const requestAdminOtp = async (email: string) => {
   const client = requireSupabase();
   const { error } = await client.auth.signInWithOtp({
     email: email.trim().toLowerCase(),
-    options: { shouldCreateUser: false },
+    options: { shouldCreateUser: true },
   });
   if (error) throw error;
 };
