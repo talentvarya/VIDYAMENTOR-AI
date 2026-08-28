@@ -44,8 +44,8 @@ export default async function handler(request: ApiRequest, response: ApiResponse
           p_board: row.board,
           p_student_id: row.student_id,
           p_section: row.section || null,
-          p_language_1: row.language_1 || 'English',
-          p_language_2: row.language_2 || 'Hinglish',
+          p_language_1: row.language_1 || null,
+          p_language_2: row.language_2 || null,
           p_school_id: null,
         });
         if (inviteError) throw inviteError;

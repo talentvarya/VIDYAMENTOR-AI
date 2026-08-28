@@ -110,11 +110,11 @@ export const restoreAuthSession = async (): Promise<AuthenticationResult | null>
   return finishAuthentication(false);
 };
 
-export const requestStudentOtp = async (email: string) => {
+export const requestStudentOtp = async (email: string, shouldCreateUser = true) => {
   const client = requireSupabase();
   const { error } = await client.auth.signInWithOtp({
     email: email.trim().toLowerCase(),
-    options: { shouldCreateUser: true },
+    options: { shouldCreateUser },
   });
   if (error) throw error;
   return { delivery: 'email' };
@@ -123,7 +123,7 @@ export const requestStudentOtp = async (email: string) => {
 export const verifyStudentOtp = async (
   email: string,
   code: string,
-  profile: StudentProfile,
+  profile?: StudentProfile,
 ): Promise<AuthenticationResult> => {
   const client = requireSupabase();
   const { error } = await client.auth.verifyOtp({
@@ -133,22 +133,40 @@ export const verifyStudentOtp = async (
   });
   if (error) throw error;
 
-  const { error: profileError } = await client.rpc('submit_student_profile', {
-    p_full_name: profile.fullName,
-    p_email: profile.email,
-    p_date_of_birth: profile.dateOfBirth,
-    p_class_level: profile.classLevel,
-    p_board: profile.board,
-    p_student_id: profile.studentId,
-    p_school_name: profile.schoolName,
-    p_school_code: profile.schoolCode || null,
-    p_section: profile.section || null,
-    p_language_1: profile.languages[0],
-    p_language_2: profile.languages[1],
-  });
-  if (profileError) {
-    await client.auth.signOut();
-    throw profileError;
+  const verifiedSession = await currentSession();
+  const { data: existingProfile, error: profileLookupError } = await client
+    .from('student_profiles')
+    .select('user_id')
+    .eq('user_id', verifiedSession.user.id)
+    .maybeSingle();
+  if (profileLookupError) {
+    await client.auth.signOut({ scope: 'local' });
+    throw profileLookupError;
+  }
+
+  if (!existingProfile) {
+    if (!profile) {
+      await client.auth.signOut({ scope: 'local' });
+      throw new Error('No student profile was found. Choose New student and complete the profile first.');
+    }
+
+    const { error: profileError } = await client.rpc('submit_student_profile', {
+      p_full_name: profile.fullName,
+      p_email: profile.email,
+      p_date_of_birth: profile.dateOfBirth,
+      p_class_level: profile.classLevel,
+      p_board: profile.board,
+      p_student_id: profile.studentId,
+      p_school_name: profile.schoolName,
+      p_school_code: profile.schoolCode || null,
+      p_section: profile.section || null,
+      p_language_1: profile.languages[0],
+      p_language_2: profile.languages[1],
+    });
+    if (profileError) {
+      await client.auth.signOut({ scope: 'local' });
+      throw profileError;
+    }
   }
   return finishAuthentication(false);
 };
@@ -174,7 +192,7 @@ export const verifyAdminOtp = async (
   const result = await finishAuthentication(false);
   if (!result.session) return result;
   if (result.session.role !== expectedRole) {
-    await client.auth.signOut();
+    await signOut();
     throw new Error('This account does not have the selected administrative role.');
   }
   if (
@@ -182,7 +200,7 @@ export const verifyAdminOtp = async (
     && schoolCode
     && result.session.schoolCode?.toLowerCase() !== schoolCode.trim().toLowerCase()
   ) {
-    await client.auth.signOut();
+    await signOut();
     throw new Error('This administrator is not assigned to that school code.');
   }
   return result;
@@ -190,7 +208,17 @@ export const verifyAdminOtp = async (
 
 export const signOut = async () => {
   const client = requireSupabase();
-  await client.auth.signOut();
+  const { data } = await client.auth.getSession();
+  let releaseError: Error | null = null;
+
+  if (data.session) {
+    const { error } = await client.rpc('release_current_device_session');
+    releaseError = error;
+  }
+
+  const { error: authError } = await client.auth.signOut({ scope: 'local' });
+  if (releaseError) throw releaseError;
+  if (authError) throw authError;
 };
 
 export const askTutor = async (

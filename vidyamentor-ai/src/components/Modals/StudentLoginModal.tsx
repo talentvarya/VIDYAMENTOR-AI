@@ -26,6 +26,7 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({
   onAuthenticated,
   initialClass = 'Class 10',
 }) => {
+  const [mode, setMode] = useState<'existing' | 'new'>('new');
   const [step, setStep] = useState<'details' | 'otp' | 'device' | 'success'>('details');
   const [profile, setProfile] = useState<StudentProfile>({
     fullName: '',
@@ -57,6 +58,7 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({
   };
 
   const reset = () => {
+    setMode('new');
     setStep('details');
     setOtp(['', '', '', '', '', '']);
     setVerifiedSession(null);
@@ -66,18 +68,22 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({
 
   const sendOtp = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!profile.fullName.trim() || !profile.email.includes('@') || !profile.dateOfBirth || !profile.studentId.trim() || !profile.schoolName.trim()) {
+    if (!profile.email.includes('@')) {
+      setError('Enter the email address linked to the student account.');
+      return;
+    }
+    if (mode === 'new' && (!profile.fullName.trim() || !profile.dateOfBirth || !profile.studentId.trim() || !profile.schoolName.trim())) {
       setError('Please complete all required student profile fields.');
       return;
     }
-    if (profile.dateOfBirth < minimumDob || profile.dateOfBirth > new Date().toISOString().slice(0, 10)) {
+    if (mode === 'new' && (profile.dateOfBirth < minimumDob || profile.dateOfBirth > new Date().toISOString().slice(0, 10))) {
       setError('Normal Phase is available only to students aged 20 or younger.');
       return;
     }
     setLoading(true);
     setError('');
     try {
-      await requestStudentOtp(profile.email);
+      await requestStudentOtp(profile.email, mode === 'new');
       setStep('otp');
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to send the OTP.');
@@ -96,7 +102,7 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({
     setLoading(true);
     setError('');
     try {
-      const result = await verifyStudentOtp(profile.email, code, profile);
+      const result = await verifyStudentOtp(profile.email, code, mode === 'new' ? profile : undefined);
       if (result.conflict) {
         setOtherDeviceName(result.conflict.otherDeviceName || 'another device');
         setStep('device');
@@ -146,27 +152,39 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({
                 <p className="mt-1 text-sm text-slate-500">Your learning access remains locked until verification, payment and activation are complete.</p>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Full Name" required><input value={profile.fullName} onChange={(e) => update('fullName', e.target.value)} required className="input" placeholder="Student full name" /></Field>
-                <Field label="Email"><div className="relative"><Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="email" value={profile.email} onChange={(e) => update('email', e.target.value)} required className="input pl-10" placeholder="student@example.com" /></div></Field>
-                <Field label="Date of Birth"><input type="date" min={minimumDob} max={new Date().toISOString().slice(0, 10)} value={profile.dateOfBirth} onChange={(e) => update('dateOfBirth', e.target.value)} required className="input" /></Field>
-                <Field label="Student ID"><input value={profile.studentId} onChange={(e) => update('studentId', e.target.value)} required className="input" placeholder="School roll / student ID" /></Field>
-                <Field label="Class"><select value={profile.classLevel} onChange={(e) => update('classLevel', e.target.value)} className="input">{['Class 9', 'Class 10', 'Class 11', 'Class 12'].map((value) => <option key={value}>{value}</option>)}</select></Field>
-                <Field label="Board"><select value={profile.board} onChange={(e) => update('board', e.target.value)} className="input">{boards.map((value) => <option key={value}>{value}</option>)}</select></Field>
-                <Field label="School"><input value={profile.schoolName} onChange={(e) => update('schoolName', e.target.value)} required className="input" placeholder="School name" /></Field>
-                <Field label="Section"><input value={profile.section} onChange={(e) => update('section', e.target.value)} className="input" placeholder="e.g. A" /></Field>
-                <Field label="School Code (if registered)"><input value={profile.schoolCode} onChange={(e) => update('schoolCode', e.target.value.toUpperCase())} className="input font-mono" placeholder="Optional" /></Field>
-                <Field label="Learning Languages"><div className="grid grid-cols-2 gap-2"><select value={profile.languages[0]} onChange={(e) => update('languages', [e.target.value as SupportedLanguage, profile.languages[1]])} className="input">{languages.filter((item) => item !== profile.languages[1]).map((item) => <option key={item}>{item}</option>)}</select><select value={profile.languages[1]} onChange={(e) => update('languages', [profile.languages[0], e.target.value as SupportedLanguage])} className="input">{languages.filter((item) => item !== profile.languages[0]).map((item) => <option key={item}>{item}</option>)}</select></div></Field>
+              <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1 text-sm font-bold">
+                <button type="button" onClick={() => { setMode('new'); setError(''); }} className={`rounded-lg px-3 py-2.5 ${mode === 'new' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500'}`}>New student</button>
+                <button type="button" onClick={() => { setMode('existing'); setError(''); }} className={`rounded-lg px-3 py-2.5 ${mode === 'existing' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500'}`}>Existing student</button>
               </div>
+
+              {mode === 'existing' ? (
+                <div className="mx-auto max-w-md space-y-3">
+                  <Field label="Email"><div className="relative"><Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="email" value={profile.email} onChange={(e) => update('email', e.target.value)} required className="input pl-10" placeholder="student@example.com" /></div></Field>
+                  <p className="text-xs leading-5 text-slate-500">Your saved profile will be used as-is and will not be resubmitted or changed.</p>
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Full Name" required><input value={profile.fullName} onChange={(e) => update('fullName', e.target.value)} required className="input" placeholder="Student full name" /></Field>
+                  <Field label="Email"><div className="relative"><Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="email" value={profile.email} onChange={(e) => update('email', e.target.value)} required className="input pl-10" placeholder="student@example.com" /></div></Field>
+                  <Field label="Date of Birth"><input type="date" min={minimumDob} max={new Date().toISOString().slice(0, 10)} value={profile.dateOfBirth} onChange={(e) => update('dateOfBirth', e.target.value)} required className="input" /></Field>
+                  <Field label="Student ID"><input value={profile.studentId} onChange={(e) => update('studentId', e.target.value)} required className="input" placeholder="School roll / student ID" /></Field>
+                  <Field label="Class"><select value={profile.classLevel} onChange={(e) => update('classLevel', e.target.value)} className="input">{['Class 9', 'Class 10', 'Class 11', 'Class 12'].map((value) => <option key={value}>{value}</option>)}</select></Field>
+                  <Field label="Board"><select value={profile.board} onChange={(e) => update('board', e.target.value)} className="input">{boards.map((value) => <option key={value}>{value}</option>)}</select></Field>
+                  <Field label="School"><input value={profile.schoolName} onChange={(e) => update('schoolName', e.target.value)} required className="input" placeholder="School name" /></Field>
+                  <Field label="Section"><input value={profile.section} onChange={(e) => update('section', e.target.value)} className="input" placeholder="e.g. A" /></Field>
+                  <Field label="School Code (if registered)"><input value={profile.schoolCode} onChange={(e) => update('schoolCode', e.target.value.toUpperCase())} className="input font-mono" placeholder="Optional" /></Field>
+                  <Field label="Learning Languages"><div className="grid grid-cols-2 gap-2"><select value={profile.languages[0]} onChange={(e) => update('languages', [e.target.value as SupportedLanguage, profile.languages[1]])} className="input">{languages.filter((item) => item !== profile.languages[1]).map((item) => <option key={item}>{item}</option>)}</select><select value={profile.languages[1]} onChange={(e) => update('languages', [profile.languages[0], e.target.value as SupportedLanguage])} className="input">{languages.filter((item) => item !== profile.languages[0]).map((item) => <option key={item}>{item}</option>)}</select></div></Field>
+                </div>
+              )}
               {error && <ErrorMessage message={error} />}
-              <button disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3.5 text-sm font-bold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700 disabled:opacity-60">{loading ? <Spinner /> : <>Send 6-Digit OTP <ArrowRight className="h-4 w-4" /></>}</button>
+              <button disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3.5 text-sm font-bold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700 disabled:opacity-60">{loading ? <Spinner /> : <>{mode === 'new' ? 'Create Profile & Send OTP' : 'Send Login OTP'} <ArrowRight className="h-4 w-4" /></>}</button>
             </form>
           )}
 
           {step === 'otp' && (
             <form onSubmit={verifyOtp} className="mx-auto max-w-md space-y-5 text-center">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-blue-100 bg-blue-50 text-blue-600"><KeyRound className="h-6 w-6" /></div>
-              <div><h4 className="text-xl font-bold text-slate-900">Check your email</h4><p className="mt-1 text-sm text-slate-500">Enter the 6-digit code sent to <strong>{profile.email}</strong>.</p></div>
+              <div><h4 className="text-xl font-bold text-slate-900">Check your email</h4><p className="mt-1 text-sm text-slate-500">Enter the 6-digit code sent to <strong>{profile.email}</strong>.{mode === 'existing' ? ' Your saved profile will not be changed.' : ''}</p></div>
               <div className="flex justify-center gap-2">{otp.map((value, index) => <input key={index} id={`student-otp-${index}`} inputMode="numeric" maxLength={1} value={value} onChange={(e) => { const next = [...otp]; next[index] = e.target.value.replace(/\D/g, '').slice(-1); setOtp(next); if (next[index]) document.getElementById(`student-otp-${index + 1}`)?.focus(); }} className="h-12 w-11 rounded-xl border border-slate-200 text-center text-lg font-bold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100" />)}</div>
               {error && <ErrorMessage message={error} />}
               <button disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-60">{loading ? <Spinner /> : 'Verify Securely'}</button>

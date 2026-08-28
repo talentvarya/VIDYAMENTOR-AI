@@ -7,7 +7,15 @@ export default async function handler(request: ApiRequest, response: ApiResponse
 
   try {
     const profile = readBody<StudentProfile>(request);
-    if (!isEmail(String(profile.email ?? '')) || !profile.fullName || !profile.dateOfBirth || !profile.studentId) {
+    if (
+      !isEmail(String(profile.email ?? ''))
+      || !profile.fullName
+      || !profile.dateOfBirth
+      || !profile.studentId
+      || !profile.languages?.[0]
+      || !profile.languages?.[1]
+      || profile.languages[0] === profile.languages[1]
+    ) {
       return sendError(response, 400, 'Complete all required student fields.');
     }
 
@@ -26,8 +34,8 @@ export default async function handler(request: ApiRequest, response: ApiResponse
       p_board: profile.board,
       p_student_id: profile.studentId,
       p_section: profile.section || null,
-      p_language_1: profile.languages?.[0] || 'English',
-      p_language_2: profile.languages?.[1] || 'Hinglish',
+      p_language_1: profile.languages[0],
+      p_language_2: profile.languages[1],
       p_school_id: context.role === 'super_admin' ? context.schoolId : null,
     });
     if (inviteError) throw inviteError;
